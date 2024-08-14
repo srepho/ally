@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Anonymising Managerial Feedback</title>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        .comment { border: 1px solid #ddd; padding: 10px; margin-bottom: 10px; }
+        .votes { font-weight: bold; }
+        .remove, .answer { cursor: pointer; margin-left: 10px; }
+        .remove { color: red; }
+        .answer { color: green; }
+        .answered { text-decoration: line-through; opacity: 0.6; }
+    </style>
+</head>
+<body>
+    <h1>Anonymising Managerial Feedback</h1>
+    
+    <div id="loginSection">
+        <input type="text" id="username" placeholder="Username">
+        <input type="password" id="password" placeholder="Password">
+        <button onclick="login()">Login</button>
+    </div>
+
+    <div id="commentSection" style="display:none;">
+        <textarea id="newComment" rows="4" cols="50"></textarea>
+        <button onclick="submitComment()">Submit Comment</button>
+        <button onclick="logout()">Logout</button>
+    </div>
+
+    <div id="comments">
+        <!-- Comments will be dynamically inserted here -->
+    </div>
+
+    <script>
+        // Store the CSRF token
+        let csrfToken = '';
+
+        // Configure Axios to always send the CSRF token
+        axios.defaults.xsrfHeaderName = "X-CSRF-Token";
+        axios.defaults.withCredentials = true;
+
+        window.onload = function() {
+            checkLoginStatus();
+            fetchComments();
+        }
+
+        function checkLoginStatus() {
+            const commentSection = document.getElementById('commentSection');
+            const loginSection = document.getElementById('loginSection');
+            axios.get('/check_login')
+                .then(response => {
+                    if (response.data.logged_in) {
+                        commentSection.style.display = 'block';
+                        loginSection.style.display = 'none';
+                    } else {
+                        commentSection.style.display = 'none';
+                        loginSection.style.display = 'block';
+                    }
+                    csrfToken = response.data.csrf_token;
+                    axios.defaults.headers.common['X-CSRF-TOKEN'] = csrfToken;
+                })
+                .catch(error => {
+                    console.error('Error checking login status:', error);
+                });
+        }
+
+        function fetchComments() {
+            axios.get('/get_comments')
+                .then(response => {
+                    const commentsDiv = document.getElementById('comments');
+                    commentsDiv.innerHTML = '';
+                    response.data.comments.forEach(comment => {
+                        addCommentToPage(comment);
+                    });
+                })
+                .catch(error => {
+                    console.error('Error fetching comments:', error);
+                });
+        }
+
+        function login() {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            axios.post('/login', {
+                username: username,
+                password: password
+            })
+            .then(response => {
+                if (response.data.success) {
+                    document.getElementById('loginSection').style.display = 'none';
+                    document.getElementById('commentSection').style.display = 'block';
+                    fetchComments();
+                } else {
+                    alert('Login failed: ' + response.data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Login failed: ' + (error.response ? error.response.data.message : 'Unknown error'));
+            });
+        }
+
+        function logout() {
+            axios.post('/logout')
+                .then(() => {
+                    document.getElementById('loginSection').style.display = 'block';
+                    document.getElementById('commentSection').style.display = 'none';
+                    document.getElementById('comments').innerHTML = '';
+                })
+                .catch(error => {
+                    console.error('Error logging out:', error);
+                    alert('Logout failed: ' + (error.response ? error.response.data.message : 'Unknown error'));
+                });
+        }
+
+        function submitComment() {
+            const comment = document.getElementById('newComment').value;
+            if (!comment.trim()) {
+                alert('Please enter a comment');
+                return;
+            }
+            axios.post('/submit_comment', {
+                comment: comment
+            })
+            .then(response => {
+                if (response.data.success) {
+                    addCommentToPage(response.data);
+                    document.getElementById('newComment').value = '';
+                } else {
+                    alert('Failed to submit comment: ' + response.data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Failed to submit comment: ' + (error.response ? error.response.data.message : 'Unknown error'));
+            });
+        }
+
+        function addCommentToPage(comment) {
+            const commentsDiv = document.getElementById('comments');
+            const newCommentDiv = document.createElement('div');
+            newCommentDiv.className = 'comment' + (comment.answered ? ' answered' : '');
+            newCommentDiv.id = `comment-${comment.id}`;
+            newCommentDiv.innerHTML = `
+                <p>${comment.rewritten}</p>
+                <span class="votes">Votes: <span id="votes-${comment.id}">${comment.votes}</span></span>
+                <button onclick="voteComment(${comment.id})">Vote</button>
+                <span class="remove" onclick="removeComment(${comment.id})">Remove</span>
+                <span class="answer" onclick="answerComment(${comment.id})">Answered</span>
+            `;
+            commentsDiv.prepend(newCommentDiv);
+        }
+
+        function voteComment(id) {
+            axios.post('/vote', { id: id })
+                .then(response => {
+                    if (response.data.success) {
+                        document.getElementById(`votes-${id}`).textContent = response.data.votes;
+                    } else {
+                        alert('Failed to vote: ' + response.data.message);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('Failed to vote: ' + (error.response ? error.response.data.message : 'Unknown error'));
+                });
+        }
+
+        function removeComment(id) {
+            axios.post('/remove', { id: id })
+                .then(response => {
+                    if (response.data.success) {
+                        document.getElementById(`comment-${id}`).remove();
+                    } else {
+                        alert('Failed to remove comment: ' + response.data.message);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('Failed to remove comment: ' + (error.response ? error.response.data.message : 'Unknown error'));
+                });
+        }
+
+        function answerComment(id) {
+            axios.post('/answer', { id: id })
+                .then(response => {
+                    if (response.data.success) {
+                        const commentDiv = document.getElementById(`comment-${id}`);
+                        commentDiv.classList.add('answered');
+                        document.getElementById('comments').appendChild(commentDiv);
+                    } else {
+                        alert('Failed to mark comment as answered: ' + response.data.message);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('Failed to mark comment as answered: ' + (error.response ? error.response.data.message : 'Unknown error'));
+                });
+        }
+    </script>
+</body>
+</html>
