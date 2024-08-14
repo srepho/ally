@@ -19,8 +19,6 @@
     <h1>Anonymising Managerial Feedback</h1>
     
     <div id="loginSection">
-        <input type="text" id="username" placeholder="Username">
-        <input type="password" id="password" placeholder="Password">
         <button onclick="login()">Login</button>
     </div>
 
@@ -82,12 +80,7 @@
         }
 
         function login() {
-            const username = document.getElementById('username').value;
-            const password = document.getElementById('password').value;
-            axios.post('/login', {
-                username: username,
-                password: password
-            })
+            axios.post('/login')
             .then(response => {
                 if (response.data.success) {
                     document.getElementById('loginSection').style.display = 'none';
