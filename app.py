@@ -17,7 +17,6 @@ app.config['SESSION_COOKIE_SECURE'] = True
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['WTF_CSRF_TIME_LIMIT'] = None
-app.config['SESSION_COOKIE_NAME'] = 'shared_session'
 
 db = SQLAlchemy(app)
 csrf = CSRFProtect(app)
@@ -27,10 +26,6 @@ limiter = Limiter(
     default_limits=["200 per day", "50 per hour"],
     storage_uri="memory://"
 )
-
-# Shared credentials
-SHARED_USERNAME = os.environ.get('SHARED_USERNAME') or "shared_user"
-SHARED_PASSWORD = os.environ.get('SHARED_PASSWORD') or "shared_password"
 
 # Anthropic API setup
 ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY')
@@ -57,6 +52,19 @@ def check_login():
         'csrf_token': generate_csrf()
     })
 
+@app.route('/login', methods=['POST'])
+@limiter.limit("5 per minute")
+def login():
+    session.clear()
+    session.permanent = True
+    session['user_id'] = secrets.token_urlsafe(16)
+    return jsonify({"success": True, "message": "Logged in successfully"})
+
+@app.route('/logout', methods=['POST'])
+def logout():
+    session.clear()
+    return jsonify({"success": True, "message": "Logged out successfully"})
+
 @app.route('/get_comments')
 def get_comments():
     comments = Comment.query.order_by(Comment.answered, Comment.votes.desc()).all()
@@ -68,26 +76,6 @@ def get_comments():
             'answered': comment.answered
         } for comment in comments]
     })
-
-@app.route('/login', methods=['POST'])
-@limiter.limit("5 per minute")
-def login():
-    data = request.get_json()
-    username = data.get('username')
-    password = data.get('password')
-    
-    if username == SHARED_USERNAME and password == SHARED_PASSWORD:
-        session.permanent = True
-        if 'user_id' not in session:
-            session['user_id'] = secrets.token_urlsafe(16)
-        return jsonify({"success": True, "message": "Logged in successfully"})
-    else:
-        return jsonify({"success": False, "message": "Invalid credentials"}), 401
-
-@app.route('/logout', methods=['POST'])
-def logout():
-    session.pop('user_id', None)
-    return jsonify({"success": True, "message": "Logged out successfully"})
 
 @app.route('/submit_comment', methods=['POST'])
 @limiter.limit("10 per minute")
@@ -180,7 +168,7 @@ def rewrite_comment(comment):
             model="claude-3-5-sonnet-20240620",
             max_tokens=1000,
             temperature=0.7,
-            system="You are an assistant that rewrites comments in a more professional tone. Please only respond with the rewritten comment and no precursor.",
+            system="You are an assistant that rewrites comments in a more professional tone.",
             messages=[
                 {
                     "role": "user",
@@ -209,4 +197,4 @@ def ratelimit_handler(e):
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
-    app.run(debug=False)
+    app.run(host='0.0.0.0', port=5000, debug=False)
