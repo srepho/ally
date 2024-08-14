@@ -118,7 +118,7 @@ def rewrite_comment(comment):
                     "content": [
                         {
                             "type": "text",
-                            "text": f"Rewrite the following comment in a more professional tone:\n\n{comment}"
+                            "text": f"Rewrite the following comment in a more professional tone only reply with the answer no preamble:\n\n{comment}"
                         }
                     ]
                 }
